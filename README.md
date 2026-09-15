@@ -113,7 +113,8 @@ python -m statarb.cli paper --config config_paper.yaml --pair BTC ETH --iteratio
 `scan` and `backtest` also work on a stock universe, using the same
 Engle-Granger cointegration + walk-forward backtest pipeline -- just a
 different data source (`yfinance` instead of `ccxt`) and a different
-default universe (ten liquid large caps instead of eight coins):
+default universe (22 liquid large caps across several sectors, instead of
+eight coins):
 
 ```bash
 python -m statarb.cli scan --config config_stocks.yaml
@@ -125,6 +126,30 @@ path; `universe` becomes plain tickers (`quote`/`exchange` are ignored).
 Only daily/weekly/monthly bars are supported for stocks -- yfinance caps
 intraday history at ~60 days, too short for a meaningful train/test window,
 so `timeframe` must be `1d`, `1wk`, or `1mo`.
+
+### Out-of-sample pair selection (`selection_lookback_days`)
+
+The first real run of `backtest --config config_stocks.yaml` looked great
+(positive Sharpe, no losing trades) for a bad reason: `scan` picked the
+pairs with the lowest p-values over a window, and `backtest` then tested
+exactly those pairs over that *same* window. That's selection bias -- the
+walk-forward backtest correctly avoids lookahead at the trade-timing level
+(hedge ratios are only ever fit on a rolling train window, trades only
+happen in the following test window), but that protection means nothing if
+the *choice of which pairs to trade* was made with knowledge of the full
+sample. You're filtering out the unlucky pairs before the backtest even
+starts.
+
+The fix: when `selection_lookback_days` is set to a positive number,
+`backtest` (with no explicit `--pair`) fetches that many EXTRA days of
+history, runs `scan` only on that earlier portion, then backtests only the
+later `lookback_days` window -- which pair selection never saw. The two
+windows never overlap (see `pairs.split_for_oos_pair_selection`). Passing
+an explicit `--pair` skips this entirely (there's no selection step to
+bias when you already told it which pair to test). Crypto configs leave
+`selection_lookback_days` at its default of `0`, which preserves the
+original single-window behavior -- if you use it that way, `backtest`
+prints a warning saying so.
 
 A few things worth knowing before reading much into results here:
 - **`paper` does not support stocks yet.** The live polling loop assumes

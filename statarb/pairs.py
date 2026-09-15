@@ -67,6 +67,33 @@ def compute_spread(y: pd.Series, x: pd.Series, model: PairModel) -> pd.Series:
     return y - (model.alpha + model.hedge_ratio * x)
 
 
+def split_for_oos_pair_selection(prices: pd.DataFrame, test_days: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split a price history by time into (selection, test): the earlier
+    portion used ONLY to pick which pairs look cointegrated, and the later
+    `test_days` used ONLY to backtest whatever pairs that selection step
+    already chose.
+
+    Why this matters: running scan_pairs and backtest_portfolio on the
+    SAME window (scan picks the pairs with the lowest p-values over that
+    window, then you backtest exactly those pairs over that same window)
+    is a form of selection bias -- you're filtering out the unlucky pairs
+    using knowledge of the full window before the backtest even starts,
+    which inflates apparent performance. The walk-forward backtest already
+    avoids lookahead at the trade-timing level (it only fits the hedge
+    ratio on a rolling train window and trades the following test window),
+    but that protection is undermined if the *choice of which pairs to
+    trade* was made using the full sample. This function is what makes
+    pair selection itself out-of-sample too: scan the `selection` half,
+    backtest only the `test` half, and the two never overlap.
+    """
+    if prices.empty:
+        return prices, prices
+    cutoff = prices.index.max() - pd.Timedelta(days=test_days)
+    selection = prices[prices.index <= cutoff]
+    test = prices[prices.index > cutoff]
+    return selection, test
+
+
 def scan_pairs(
     prices: pd.DataFrame,
     pvalue_threshold: float = 0.05,

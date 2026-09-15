@@ -37,6 +37,14 @@ class Config:
     lookback_days: int = 180           # history to pull for `scan` / `backtest`
     cache_dir: str = ".cache/ohlcv"    # local cache of fetched OHLCV (parquet)
 
+    # When > 0, `backtest` (with no explicit --pair) picks pairs using an
+    # EARLIER window of this many days, then backtests ONLY the later
+    # `lookback_days` window -- which those picked pairs never influenced.
+    # Default 0 preserves the original behavior (scan and backtest share
+    # one window) for backward compatibility -- crypto configs don't set
+    # this. See pairs.split_for_oos_pair_selection for why it matters.
+    selection_lookback_days: int = 0
+
     # --- Pair discovery (Engle-Granger cointegration) ---
     coint_pvalue_threshold: float = 0.05
 

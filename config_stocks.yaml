@@ -10,22 +10,52 @@
 # GitHub Actions) due to Yahoo's cookie/crumb anti-bot check -- the
 # equities equivalent of the Binance-451-on-GitHub-Actions issue this
 # project already hit once for crypto. If this comes back empty when run
-# from CI, that's the first thing to check (see stocks_data.py).
+# from CI, that's the first thing to check (see stocks_data.py). Confirmed
+# working from Mahmoud's own machine 2026-09-15.
 
 asset_class: stock
-universe: [AAPL, MSFT, GOOGL, AMZN, META, NVDA, JPM, XOM, KO, PEP]
+
+# 22 liquid large caps across several sectors (tech, financials, consumer
+# staples/discretionary, energy, healthcare) rather than 10 mostly-tech
+# names -- more candidate pairs (231 vs 45) and more chances for a pair to
+# be cointegrated for an actual economic reason (same sector/business
+# model) rather than coincidence.
+universe: [
+  AAPL, MSFT, GOOGL, AMZN, META, NVDA,        # tech / mega-cap growth
+  JPM, BAC, V, MA,                             # financials
+  XOM, CVX,                                    # energy
+  KO, PEP, WMT, PG,                            # consumer staples
+  HD, LOW,                                     # home improvement (direct comps)
+  UNH, JNJ,                                    # healthcare
+  DIS, INTC,
+]
 timeframe: 1d          # only 1d/1wk/1mo supported for stocks -- see stocks_data.py
-lookback_days: 730     # ~2 years of daily bars
+
+# Out-of-sample pair selection (see pairs.split_for_oos_pair_selection and
+# the README's "Stocks" section for the full rationale): `backtest`
+# without --pair now scans for cointegrated pairs using the EARLIER
+# selection_lookback_days of history, then backtests ONLY the later
+# lookback_days -- a window pair selection never saw. Without this split,
+# scan picks the pairs that happened to do best over a window and then
+# backtest "confirms" it on that same window, which is closer to curve-
+# fitting than to a real out-of-sample test.
+selection_lookback_days: 500   # ~1.4 years used only to pick pairs
+lookback_days: 500             # ~1.4 years used only to backtest the picked pairs
 cache_dir: .cache/ohlcv
 
 coint_pvalue_threshold: 0.05
 
 # Windows are in BARS (trading days here, not calendar days -- weekends/
-# holidays simply aren't in the data, no special handling needed).
-train_window: 252      # ~1 trading year
-test_window: 63         # ~1 trading quarter -- refit the hedge ratio every ~quarter
-zscore_window: 63       # ~1 quarter rolling window for the z-score
-min_periods_zscore: 20  # ~1 month before a z-score is trusted
+# holidays simply aren't in the data, no special handling needed). Sized
+# smaller than a naive "1 year train" so the held-out ~345-trading-day
+# backtest window actually contains several independent train/test refit
+# cycles instead of barely fitting one -- more refits means more chances
+# to trade, which means the resulting Sharpe/win-rate are based on more
+# than a handful of trades.
+train_window: 126      # ~6 trading months
+test_window: 42         # ~2 trading months -- refit the hedge ratio roughly every 2 months
+zscore_window: 42       # matches test_window
+min_periods_zscore: 15  # ~3 trading weeks before a z-score is trusted
 
 entry_z: 2.0
 exit_z: 0.5

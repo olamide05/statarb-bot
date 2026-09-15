@@ -104,19 +104,24 @@ def load_stock_history(
 ) -> pd.DataFrame:
     """Fetch (or load from cache) OHLCV history for one ticker."""
     path = _cache_path(cache_dir, ticker, timeframe)
+    cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=lookback_days)
 
     if use_cache and path.exists():
         cached = pd.read_parquet(path)
         cached["timestamp"] = pd.to_datetime(cached["timestamp"], utc=True)
         cached[_NUMERIC_OHLCV_COLUMNS] = cached[_NUMERIC_OHLCV_COLUMNS].astype("float64")
-        cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=lookback_days)
-        # Daily bars close once a day -- re-fetching every run is wasteful
-        # and more likely to trip Yahoo's rate limiting, so the cache is
-        # considered fresh for same-day reuse rather than always refetching
-        # the tail like the crypto loader does (crypto bars close every few
-        # minutes, so that tradeoff doesn't apply here).
-        if not cached.empty and cached["timestamp"].max() >= cutoff and \
-                cached["timestamp"].max().date() >= (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=3)).date():
+        # Two conditions, both required: the cache has to reach back far
+        # enough to cover the *requested* lookback_days (not just whatever
+        # lookback_days some earlier call happened to use -- a cache built
+        # for a shorter window must NOT be silently served for a longer
+        # one, that would quietly truncate the result), and it has to be
+        # recent enough to trust (daily bars close once a day, so same-day
+        # reuse is fine -- no need to refetch the tail every run the way
+        # the crypto loader does for its every-few-minutes bars).
+        covers_requested_window = not cached.empty and cached["timestamp"].min() <= cutoff
+        is_fresh = not cached.empty and cached["timestamp"].max().date() >= \
+            (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=3)).date()
+        if covers_requested_window and is_fresh:
             return cached[cached["timestamp"] >= cutoff].reset_index(drop=True)
 
     fresh = fetch_stock_history(ticker, timeframe, lookback_days)

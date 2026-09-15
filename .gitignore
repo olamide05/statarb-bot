@@ -15,3 +15,5 @@ __pycache__/
 # saved to disk at all when running from a laptop). See
 # .github/workflows/paper-trading.yml and the README section on running
 # via GitHub Actions.
+
+.venv

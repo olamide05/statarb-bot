@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import sys
 from pathlib import Path
@@ -20,7 +21,7 @@ import pandas as pd
 from .backtest import backtest_portfolio
 from .config import Config
 from .data import load_universe_prices
-from .pairs import scan_pairs
+from .pairs import scan_pairs, split_for_oos_pair_selection
 from .paper import run_paper_trading
 
 
@@ -73,11 +74,39 @@ def cmd_scan(args):
 
 def cmd_backtest(args):
     config = _load_config(args)
-    prices = _load_prices(config)
 
     if args.pair:
+        # An explicit --pair skips pair selection entirely, so there's no
+        # selection-bias question here -- just backtest the requested pair
+        # over the configured lookback_days.
+        prices = _load_prices(config)
         pairs = [tuple(args.pair)]
+    elif config.selection_lookback_days > 0:
+        # Out-of-sample pair selection: fetch selection_lookback_days extra
+        # history, scan for cointegrated pairs on that EARLIER portion only,
+        # then backtest those pairs on just the later lookback_days window
+        # that selection step never saw. See split_for_oos_pair_selection's
+        # docstring for why this matters -- backtesting the same window you
+        # picked winners from inflates apparent performance.
+        total_days = config.selection_lookback_days + config.lookback_days
+        full_prices = _load_prices(dataclasses.replace(config, lookback_days=total_days))
+        selection_prices, prices = split_for_oos_pair_selection(full_prices, config.lookback_days)
+        print(f"Selecting pairs on {selection_prices.index.min().date()}..{selection_prices.index.max().date()} "
+              f"({len(selection_prices)} bars) -- backtesting ONLY the held-out "
+              f"{prices.index.min().date()}..{prices.index.max().date()} ({len(prices)} bars), "
+              f"which pair selection never saw.", file=sys.stderr)
+        ranked = scan_pairs(selection_prices, pvalue_threshold=config.coint_pvalue_threshold)
+        cointegrated = ranked[ranked["cointegrated"]]
+        top_n = args.top_n or config.max_concurrent_pairs
+        if cointegrated.empty:
+            print("No cointegrated pairs found in the selection window at the configured "
+                  "p-value threshold; try --pair to force one, or loosen coint_pvalue_threshold.",
+                  file=sys.stderr)
+            sys.exit(1)
+        pairs = list(cointegrated.head(top_n)[["symbol_a", "symbol_b"]].itertuples(index=False, name=None))
+        print(f"Backtesting top {len(pairs)} out-of-sample-selected pair(s): {pairs}", file=sys.stderr)
     else:
+        prices = _load_prices(config)
         ranked = scan_pairs(prices, pvalue_threshold=config.coint_pvalue_threshold)
         cointegrated = ranked[ranked["cointegrated"]]
         top_n = args.top_n or config.max_concurrent_pairs
@@ -86,7 +115,9 @@ def cmd_backtest(args):
                   "try --pair to force one, or loosen coint_pvalue_threshold.", file=sys.stderr)
             sys.exit(1)
         pairs = list(cointegrated.head(top_n)[["symbol_a", "symbol_b"]].itertuples(index=False, name=None))
-        print(f"Backtesting top {len(pairs)} cointegrated pair(s): {pairs}", file=sys.stderr)
+        print(f"Backtesting top {len(pairs)} cointegrated pair(s): {pairs} "
+              f"(NOTE: same window used for selection and backtest -- set selection_lookback_days "
+              f"in the config to avoid selection bias here; see README).", file=sys.stderr)
 
     portfolio = backtest_portfolio(prices, pairs, config)
 
