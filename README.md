@@ -108,6 +108,50 @@ python -m statarb.cli paper --config config_paper.yaml --pair BTC ETH --iteratio
 | `starting_capital`, `risk_per_pair_pct`, `max_concurrent_pairs` | sizing |
 | `poll_interval_sec`, `paper_log_dir` | paper-trading loop behavior |
 
+## Stocks (`config_stocks.yaml`)
+
+`scan` and `backtest` also work on a stock universe, using the same
+Engle-Granger cointegration + walk-forward backtest pipeline -- just a
+different data source (`yfinance` instead of `ccxt`) and a different
+default universe (ten liquid large caps instead of eight coins):
+
+```bash
+python -m statarb.cli scan --config config_stocks.yaml
+python -m statarb.cli backtest --config config_stocks.yaml --pair AAPL MSFT
+```
+
+Set `asset_class: stock` in a config to switch `scan`/`backtest` onto this
+path; `universe` becomes plain tickers (`quote`/`exchange` are ignored).
+Only daily/weekly/monthly bars are supported for stocks -- yfinance caps
+intraday history at ~60 days, too short for a meaningful train/test window,
+so `timeframe` must be `1d`, `1wk`, or `1mo`.
+
+A few things worth knowing before reading much into results here:
+- **`paper` does not support stocks yet.** The live polling loop assumes
+  continuous 24/7 bars (crypto) and doesn't handle market hours, weekends,
+  or holidays -- running it against a stock config exits with an error
+  rather than silently doing something wrong. Paper-trading stocks
+  properly is a reasonable next step, not yet built.
+- **Cross-asset-class pairs (a stock vs. a crypto) are not something this
+  project does, on purpose.** They trade on different calendars, currencies,
+  and are driven by essentially unrelated fundamentals -- any cointegration
+  `scan` found between them would almost certainly be spurious, not a real
+  relationship. Stocks get their own universe and their own `scan`/`backtest`
+  run, deliberately kept separate from the crypto side.
+- **yfinance is a known-flaky dependency in cloud/CI environments.** Yahoo
+  requires a cookie/crumb handshake that can fail outright from datacenter
+  IPs (GitHub Actions included) -- the equities-data equivalent of the
+  Binance-451 issue this project already hit for crypto (see above). If
+  `scan --config config_stocks.yaml` comes back with no data, that's the
+  first thing to check, not a bug in this project. `statarb/stocks_data.py`
+  has a no-auth fallback noted in its docstring (Stooq, daily bars only) if
+  yfinance needs to be swapped out the way Binance was.
+- **The cost assumptions in `config_stocks.yaml` (`fee_bps: 2.0`,
+  `slippage_bps: 2.0`) are a starting guess, not a researched number** --
+  equities are typically cheaper to trade than crypto, but the real numbers
+  depend entirely on your actual broker. Update them before the backtest
+  numbers mean anything.
+
 ## Running via GitHub Actions (instead of your own laptop)
 
 `paper` doesn't need to run on your laptop at all -- `.github/workflows/paper-trading.yml`

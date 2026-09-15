@@ -18,12 +18,22 @@ import yaml
 @dataclass
 class Config:
     # --- Data ---
-    exchange: str = "binance"          # any ccxt id; public OHLCV only, no API key required
-    quote: str = "USDT"                # quote currency all universe symbols are traded against
+    asset_class: str = "crypto"        # "crypto" (ccxt) or "stock" (yfinance) -- picks the
+                                        # data loader in cli.py. Everything below `universe`
+                                        # means the same thing for either: `universe` is coin
+                                        # symbols for crypto (combined with `quote`) or plain
+                                        # tickers for stocks (`quote`/`exchange` are ignored).
+    exchange: str = "binance"          # any ccxt id; public OHLCV only, no API key required.
+                                        # Ignored when asset_class == "stock".
+    quote: str = "USDT"                # quote currency all universe symbols are traded against.
+                                        # Ignored when asset_class == "stock".
     universe: List[str] = field(default_factory=lambda: [
         "BTC", "ETH", "SOL", "BNB", "ADA", "XRP", "LTC", "AVAX",
     ])
-    timeframe: str = "1h"              # ccxt timeframe string
+    timeframe: str = "1h"              # ccxt timeframe string for crypto; for stocks only
+                                        # "1d"/"1wk"/"1mo" are supported (see stocks_data.py --
+                                        # yfinance intraday history is capped too short to be
+                                        # useful for a train/test window).
     lookback_days: int = 180           # history to pull for `scan` / `backtest`
     cache_dir: str = ".cache/ohlcv"    # local cache of fetched OHLCV (parquet)
 

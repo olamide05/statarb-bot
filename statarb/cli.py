@@ -24,6 +24,25 @@ from .pairs import scan_pairs
 from .paper import run_paper_trading
 
 
+def _load_prices(config: Config) -> pd.DataFrame:
+    """Dispatch to the crypto (ccxt) or stock (yfinance) data loader based
+    on config.asset_class. scan_pairs/backtest_portfolio don't care which
+    one produced the prices -- they just operate on the resulting wide
+    DataFrame -- so this is the only place asset_class needs a branch."""
+    if config.asset_class == "stock":
+        from .stocks_data import load_stock_universe_prices
+        return load_stock_universe_prices(
+            config.universe, config.timeframe, config.lookback_days, config.cache_dir,
+        )
+    elif config.asset_class == "crypto":
+        return load_universe_prices(
+            config.universe, config.quote, config.exchange, config.timeframe,
+            config.lookback_days, config.cache_dir,
+        )
+    else:
+        raise ValueError(f"Unknown asset_class {config.asset_class!r}, expected 'crypto' or 'stock'.")
+
+
 def _setup_logging(verbose: bool):
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
@@ -37,12 +56,10 @@ def _load_config(args) -> Config:
 
 def cmd_scan(args):
     config = _load_config(args)
+    source = "yfinance" if config.asset_class == "stock" else config.exchange
     print(f"Fetching {config.lookback_days}d of {config.timeframe} data for {len(config.universe)} "
-          f"symbols from {config.exchange} ...", file=sys.stderr)
-    prices = load_universe_prices(
-        config.universe, config.quote, config.exchange, config.timeframe,
-        config.lookback_days, config.cache_dir,
-    )
+          f"{config.asset_class} symbols from {source} ...", file=sys.stderr)
+    prices = _load_prices(config)
     result = scan_pairs(prices, pvalue_threshold=config.coint_pvalue_threshold)
     pd.set_option("display.float_format", lambda x: f"{x:.4f}")
     print(result.to_string(index=False))
@@ -56,10 +73,7 @@ def cmd_scan(args):
 
 def cmd_backtest(args):
     config = _load_config(args)
-    prices = load_universe_prices(
-        config.universe, config.quote, config.exchange, config.timeframe,
-        config.lookback_days, config.cache_dir,
-    )
+    prices = _load_prices(config)
 
     if args.pair:
         pairs = [tuple(args.pair)]
@@ -97,6 +111,12 @@ def cmd_backtest(args):
 
 def cmd_paper(args):
     config = _load_config(args)
+    if config.asset_class == "stock":
+        print("`paper` only supports asset_class: crypto for now -- the live polling loop is "
+              "ccxt-specific (continuous 24/7 bars) and doesn't yet handle stock market hours/"
+              "holidays. Use `scan`/`backtest` for stocks; paper-trading them is a reasonable "
+              "next step to add later.", file=sys.stderr)
+        sys.exit(1)
     if not args.pair:
         print("`paper` requires --pair COIN_A COIN_B (paper trading runs one pair at a time in this scaffold).",
               file=sys.stderr)

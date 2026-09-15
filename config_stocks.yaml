@@ -1,0 +1,45 @@
+# Stocks pairs-trading config: same statistical framework (Engle-Granger
+# cointegration, walk-forward backtest, z-score signal) as config.yaml, but
+# a separate universe and data source -- yfinance instead of ccxt.
+#
+# Only `scan` and `backtest` support asset_class: stock right now (`paper`
+# doesn't yet handle stock market hours/holidays -- see cli.py). Use
+# config.yaml (crypto) for paper trading.
+#
+# Reliability note: yfinance can fail from datacenter/cloud IPs (including
+# GitHub Actions) due to Yahoo's cookie/crumb anti-bot check -- the
+# equities equivalent of the Binance-451-on-GitHub-Actions issue this
+# project already hit once for crypto. If this comes back empty when run
+# from CI, that's the first thing to check (see stocks_data.py).
+
+asset_class: stock
+universe: [AAPL, MSFT, GOOGL, AMZN, META, NVDA, JPM, XOM, KO, PEP]
+timeframe: 1d          # only 1d/1wk/1mo supported for stocks -- see stocks_data.py
+lookback_days: 730     # ~2 years of daily bars
+cache_dir: .cache/ohlcv
+
+coint_pvalue_threshold: 0.05
+
+# Windows are in BARS (trading days here, not calendar days -- weekends/
+# holidays simply aren't in the data, no special handling needed).
+train_window: 252      # ~1 trading year
+test_window: 63         # ~1 trading quarter -- refit the hedge ratio every ~quarter
+zscore_window: 63       # ~1 quarter rolling window for the z-score
+min_periods_zscore: 20  # ~1 month before a z-score is trusted
+
+entry_z: 2.0
+exit_z: 0.5
+stop_z: 4.0
+
+# Equities are typically cheaper to trade than crypto (no taker-fee tier
+# structure the way exchanges have it, tighter spreads on large caps) --
+# these are a starting assumption, not a researched number. Tune to your
+# actual broker's costs before this means anything.
+fee_bps: 2.0
+slippage_bps: 2.0
+
+starting_capital: 10000.0
+risk_per_pair_pct: 0.10
+max_concurrent_pairs: 3
+
+dry_run: true

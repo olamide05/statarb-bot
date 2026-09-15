@@ -9,6 +9,7 @@ description = "Crypto statistical arbitrage (cointegration pairs trading) backte
 requires-python = ">=3.9"
 dependencies = [
     "ccxt>=4.0.0",
+    "yfinance>=0.2.40",
     "pandas>=2.0.0",
     "numpy>=1.24.0",
     "statsmodels>=0.14.0",
