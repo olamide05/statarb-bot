@@ -12,8 +12,14 @@ name: paper-trading
 # Requires (one-time setup, see README "Running via GitHub Actions"):
 #   Settings -> Actions -> General -> Workflow permissions -> "Read and
 #   write permissions" (so this workflow's GITHUB_TOKEN can push commits).
-# No secrets/API keys are needed -- this only ever reads public Binance
-# market data.
+# No secrets/API keys are needed -- this only ever reads public market data.
+#
+# NOTE on exchange choice: Binance returns HTTP 451 ("restricted location")
+# to GitHub-hosted runners -- Binance geo-blocks the IP ranges GitHub Actions
+# runs on, regardless of account/region settings. This is a Binance-side
+# block, not a bug in this project. config_paper.yaml's `exchange` is set to
+# a different ccxt-supported exchange for this reason -- see the reachability
+# check step below if it ever needs to change again.
 
 on:
   schedule:
@@ -42,6 +48,24 @@ jobs:
           cache: "pip"
 
       - run: pip install -r requirements.txt
+
+      - name: Check exchange API reachability from this runner
+        # Informational only -- never fails the job. Binance 451s GitHub's
+        # runner IPs (see note up top); this makes it easy to see, in the
+        # same run, which alternative exchange is actually reachable if the
+        # configured one ever stops working.
+        run: |
+          check() {
+            code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "$2" 2>/dev/null || echo "ERR")
+            echo "$1: $code"
+          }
+          check binance    https://api.binance.com/api/v3/exchangeInfo
+          check binanceus  https://api.binance.us/api/v3/exchangeInfo
+          check kraken     https://api.kraken.com/0/public/Time
+          check bybit      https://api.bybit.com/v5/market/time
+          check okx        https://www.okx.com/api/v5/public/time
+          check coinbase   https://api.exchange.coinbase.com/time
+          check bitstamp   https://www.bitstamp.net/api/v2/ticker/btcusd/
 
       - name: Run one paper-trading poll (backfills any missed candles)
         run: python -m statarb.cli paper --config config_paper.yaml --pair BTC ETH --iterations 1

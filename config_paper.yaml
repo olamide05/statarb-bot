@@ -6,7 +6,13 @@
 # scan/backtest should keep using config.yaml (1h) -- this file is only for
 # `statarb paper`.
 
-exchange: binance
+# NOTE: Binance itself returns HTTP 451 ("restricted location") to
+# GitHub Actions' hosted runners -- it geo-blocks their IP ranges outright,
+# independent of any account settings. Using kraken here instead so the
+# GitHub Actions workflow can actually reach the exchange. Switch back to
+# binance if you go back to running `paper` from your own laptop, where
+# Binance is reachable.
+exchange: kraken
 quote: USDT
 universe: [BTC, ETH, SOL, BNB, ADA, XRP, LTC, AVAX]
 timeframe: 5m
