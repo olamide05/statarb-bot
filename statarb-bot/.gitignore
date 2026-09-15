@@ -1,0 +1,17 @@
+# Local OHLCV cache -- regenerable from the exchange, no need to version it.
+.cache/
+*.parquet
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# NOTE: paper_logs/ is intentionally NOT ignored.
+# The GitHub Actions workflow relies on paper_logs/state_*.json being
+# committed back to the repo after every run -- that's how paper-trading
+# state survives between ephemeral runner invocations (same reason it's
+# saved to disk at all when running from a laptop). See
+# .github/workflows/paper-trading.yml and the README section on running
+# via GitHub Actions.

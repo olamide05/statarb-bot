@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "statarb-bot"
+version = "0.1.0"
+description = "Crypto statistical arbitrage (cointegration pairs trading) backtest + paper-trading scaffold"
+requires-python = ">=3.9"
+dependencies = [
+    "ccxt>=4.0.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "statsmodels>=0.14.0",
+    "PyYAML>=6.0",
+    "pyarrow>=14.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0.0"]
+
+[project.scripts]
+statarb = "statarb.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["statarb*"]

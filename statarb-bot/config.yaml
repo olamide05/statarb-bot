@@ -1,0 +1,33 @@
+# Default tunable parameters for the statarb pipeline.
+# Any field omitted here falls back to the default in statarb/config.py.
+# Pass this file to the CLI with --config config.yaml (or edit a copy).
+
+exchange: binance
+quote: USDT
+universe: [BTC, ETH, SOL, BNB, ADA, XRP, LTC, AVAX]
+timeframe: 1h
+lookback_days: 180
+cache_dir: .cache/ohlcv
+
+coint_pvalue_threshold: 0.05
+
+train_window: 720
+test_window: 168
+zscore_window: 168
+min_periods_zscore: 48
+
+entry_z: 2.0
+exit_z: 0.5
+stop_z: 4.0
+
+fee_bps: 10.0
+slippage_bps: 5.0
+
+starting_capital: 10000.0
+risk_per_pair_pct: 0.10
+max_concurrent_pairs: 3
+
+poll_interval_sec: 60
+paper_log_dir: paper_logs
+
+dry_run: true

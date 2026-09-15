@@ -1,0 +1,55 @@
+name: paper-trading
+
+# Runs the (simulated, dry-run only) paper-trading loop on a schedule and
+# commits the updated state/logs back to the repo, so state survives across
+# runs even though each run is a brand-new, short-lived runner.
+#
+# This still never places a real order: `statarb paper` runs in dry_run
+# mode unless BOTH --live and --confirm-live-trading are passed, and even
+# with both flags the code path raises NotImplementedError -- there is no
+# real order-execution code in this project. See README.md.
+#
+# Requires (one-time setup, see README "Running via GitHub Actions"):
+#   Settings -> Actions -> General -> Workflow permissions -> "Read and
+#   write permissions" (so this workflow's GITHUB_TOKEN can push commits).
+# No secrets/API keys are needed -- this only ever reads public Binance
+# market data.
+
+on:
+  schedule:
+    # Every 15 minutes, UTC. GitHub may delay scheduled runs under load --
+    # that's fine, `statarb paper` backfills every closed candle since the
+    # last run, it doesn't only look at the latest one.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: paper-trading
+  cancel-in-progress: false # queue runs rather than overlap a state write
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - run: pip install -r requirements.txt
+
+      - name: Run one paper-trading poll (backfills any missed candles)
+        run: python -m statarb.cli paper --config config_paper.yaml --pair BTC ETH --iterations 1
+
+      - name: Commit updated paper-trading state
+        run: |
+          git config user.name "statarb-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add paper_logs/
+          git diff --cached --quiet || git commit -m "paper: update BTC/ETH state [skip ci]"
+          git push

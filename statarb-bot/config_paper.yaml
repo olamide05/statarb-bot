@@ -1,0 +1,36 @@
+# Paper-trading config: same universe/costs/thresholds as config.yaml, but
+# on a much shorter timeframe so a daily check-in of a few tens of minutes
+# actually sees multiple new candle closes (and therefore a real chance at
+# z-score movement / trades) instead of waiting on 1h bars.
+#
+# scan/backtest should keep using config.yaml (1h) -- this file is only for
+# `statarb paper`.
+
+exchange: binance
+quote: USDT
+universe: [BTC, ETH, SOL, BNB, ADA, XRP, LTC, AVAX]
+timeframe: 5m
+lookback_days: 5          # 5 days of 5m bars is ~1440 bars, comfortably more than train+zscore windows below
+
+coint_pvalue_threshold: 0.05
+
+train_window: 288         # 288 * 5m = 24h
+test_window: 72           # 72 * 5m = 6h -- refit the hedge ratio every 6h
+zscore_window: 96         # 96 * 5m = 8h rolling window for the z-score
+min_periods_zscore: 24    # 24 * 5m = 2h before a z-score is trusted
+
+entry_z: 2.0
+exit_z: 0.5
+stop_z: 4.0
+
+fee_bps: 10.0
+slippage_bps: 5.0
+
+starting_capital: 10000.0
+risk_per_pair_pct: 0.10
+max_concurrent_pairs: 3
+
+poll_interval_sec: 20     # check for a newly-closed 5m candle every 20s
+paper_log_dir: paper_logs
+
+dry_run: true
