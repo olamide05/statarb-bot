@@ -39,4 +39,14 @@ max_concurrent_pairs: 3
 poll_interval_sec: 20     # check for a newly-closed 5m candle every 20s
 paper_log_dir: paper_logs
 
+# Trade-flow ("big trader activity") monitoring -- see statarb/flow.py for
+# the full rationale (exchange trade-tape proxy, not on-chain wallet
+# tracking, and why). Logging is on from the start so paper_logs/flow_*.csv
+# actually has something in it to look at later; the filter that could let
+# this skip trade entries stays OFF until there's enough logged history to
+# know whether it helps (flow_filter_enabled: false is the config.py default
+# already, listed here only for visibility).
+log_flow_signal: true
+flow_filter_enabled: false
+
 dry_run: true

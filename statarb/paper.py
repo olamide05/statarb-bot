@@ -35,6 +35,7 @@ import pandas as pd
 from .backtest import _size_position, _trade_cost
 from .config import Config
 from .data import get_exchange
+from .flow import compute_flow_snapshot, fetch_recent_trades, flow_entry_veto, log_flow_snapshot
 from .pairs import PairModel, compute_spread, fit_pair
 from .signal import Position, SignalState, apply_action, next_action, rolling_zscore
 
@@ -218,6 +219,33 @@ class PaperTrader:
         z = float(z_series.iloc[-1])
 
         action = next_action(self.state, z, self.config.entry_z, self.config.exit_z, self.config.stop_z)
+
+        # Trade-flow ("big trader activity") monitoring -- see flow.py. Logged
+        # whenever enabled, regardless of whether there's a signal to act on
+        # this bar, so the history builds up evenly rather than only on bars
+        # where something else happened.
+        flow_snapshot = None
+        if self.config.log_flow_signal:
+            try:
+                trades = fetch_recent_trades(self.exchange, self.market_a, limit=500)
+                flow_snapshot = compute_flow_snapshot(self.market_a, trades, self.config.flow_large_trade_pctile)
+                if flow_snapshot is not None:
+                    log_flow_snapshot(self.config.paper_log_dir, flow_snapshot)
+            except Exception:
+                # never let a flow-monitoring hiccup take down the actual trading loop
+                logger.exception("Flow snapshot failed for %s; continuing without it.", self.market_a)
+
+        if (
+            self.config.flow_filter_enabled
+            and action in ("enter_long", "enter_short")
+            and flow_entry_veto(flow_snapshot, action, self.config.flow_veto_imbalance)
+        ):
+            logger.info(
+                "Flow filter vetoed %s for %s/%s (imbalance=%.3f) -- holding instead.",
+                action, self.coin_a, self.coin_b,
+                flow_snapshot.imbalance if flow_snapshot is not None else float("nan"),
+            )
+            action = None
 
         if action in ("enter_long", "enter_short") and self.open_trade is None:
             new_state = apply_action(self.state, action)

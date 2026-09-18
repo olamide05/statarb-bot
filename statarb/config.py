@@ -72,6 +72,28 @@ class Config:
     poll_interval_sec: int = 60
     paper_log_dir: str = "paper_logs"
 
+    # --- Adaptive pair scoring (see adaptive.py) ---
+    # Blends each candidate pair's cointegration p-value with its own
+    # trailing realized Sharpe from past out-of-sample windows (0 = no
+    # track record yet -> falls back to neutral, i.e. pure p-value for that
+    # pair). Only used by the `walkforward` CLI command right now, not by
+    # `backtest`/`paper` -- see README for why this needs to prove itself
+    # across multiple OOS windows before being trusted as the default.
+    adaptive_performance_weight: float = 0.35
+
+    # --- Crypto trade-flow ("big trader activity") monitoring, crypto only ---
+    # See flow.py's module docstring for what this is (an exchange trade-
+    # tape proxy, NOT on-chain wallet tracking) and why. log_flow_signal
+    # just records snapshots to paper_logs/flow_<SYMBOL>.csv every poll --
+    # pure monitoring, doesn't touch trading. flow_filter_enabled additionally
+    # lets a strongly-opposing flow imbalance skip a trade entry -- defaults
+    # to False because there isn't enough logged history yet to know if that
+    # helps; flip it on once there's real evidence, not before.
+    log_flow_signal: bool = False
+    flow_filter_enabled: bool = False
+    flow_large_trade_pctile: float = 0.95
+    flow_veto_imbalance: float = 0.6
+
     # --- Safety ---
     # dry_run is the ONLY supported mode: this scaffold never places real
     # orders. The flag and the confirm string below exist so that the CLI

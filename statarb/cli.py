@@ -5,6 +5,7 @@ Usage:
     python -m statarb.cli scan --config config.yaml
     python -m statarb.cli backtest --config config.yaml --top-n 3
     python -m statarb.cli backtest --config config.yaml --pair BTC ETH
+    python -m statarb.cli walkforward --config config_stocks.yaml --windows 4
     python -m statarb.cli paper --config config.yaml --pair BTC ETH
     python -m statarb.cli paper --config config.yaml --pair BTC ETH --iterations 5   # for testing
 """
@@ -18,6 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from .adaptive import run_walk_forward_selection, summarize_walk_forward
 from .backtest import backtest_portfolio
 from .config import Config
 from .data import load_universe_prices
@@ -140,6 +142,63 @@ def cmd_backtest(args):
         print(f"\nSaved equity curves + trade logs to {args.out_dir}", file=sys.stderr)
 
 
+def cmd_walkforward(args):
+    """Compare 'static' (p-value only) vs 'adaptive' (p-value + trailing
+    realized performance) pair selection across several SEQUENTIAL
+    out-of-sample windows -- see adaptive.py's module docstring for why one
+    OOS window isn't enough to tell a real cointegration relationship from
+    a lucky multiple-testing hit, and how testing several windows in a row
+    is the honest way to start telling them apart."""
+    config = _load_config(args)
+    if config.selection_lookback_days <= 0:
+        print("walkforward requires selection_lookback_days > 0 in the config (same field the "
+              "OOS `backtest` split uses) -- see README's 'Out-of-sample pair selection' section.",
+              file=sys.stderr)
+        sys.exit(1)
+
+    total_days = config.selection_lookback_days + config.lookback_days * args.windows
+    print(f"Fetching {total_days}d of {config.timeframe} data for {len(config.universe)} "
+          f"{config.asset_class} symbols to cover {args.windows} walk-forward window(s) ...",
+          file=sys.stderr)
+    full_prices = _load_prices(dataclasses.replace(config, lookback_days=total_days))
+    top_n = args.top_n or config.max_concurrent_pairs
+
+    static_results = run_walk_forward_selection(full_prices, config, args.windows, top_n, adaptive=False)
+    adaptive_results = run_walk_forward_selection(
+        full_prices, config, args.windows, top_n,
+        adaptive=True, performance_weight=args.performance_weight,
+    )
+
+    def _print(label, results):
+        print(f"\n=== {label} ===")
+        for r in results:
+            pairs_str = ", ".join(f"{a}/{b}" for a, b in r.chosen_pairs) or "(none cointegrated)"
+            print(f"  window {r.window_index}: selected on {r.selection_start.date()}..{r.selection_end.date()}, "
+                  f"tested on {r.test_start.date()}..{r.test_end.date()} -> {pairs_str}")
+            if r.portfolio:
+                pm = r.portfolio["portfolio_metrics"]
+                print(f"    return={pm.get('total_return_pct')}%  sharpe={pm.get('sharpe')}  "
+                      f"trades={pm.get('num_trades')}  win_rate={pm.get('win_rate_pct')}%")
+
+    _print("Static (p-value only)", static_results)
+    _print(f"Adaptive (p-value + trailing performance, weight={args.performance_weight})", adaptive_results)
+
+    static_summary = summarize_walk_forward(static_results)
+    adaptive_summary = summarize_walk_forward(adaptive_results)
+    print("\n=== Comparison across all windows ===")
+    print(f"  static:   {static_summary}")
+    print(f"  adaptive: {adaptive_summary}")
+    print(
+        "\nNOTE: cumulative_return_pct COMPOUNDS each window's own return sequentially (an "
+        "approximation of reinvesting the same capital each window, not a real continuous "
+        "backtest -- see adaptive.summarize_walk_forward). num_trades/win_rate_pct ARE exact, "
+        "pooled across all windows' real trades. With only a handful of windows, don't over-read "
+        "a static-vs-adaptive gap either way -- run more windows (more universe history) before "
+        "trusting a conclusion here.",
+        file=sys.stderr,
+    )
+
+
 def cmd_paper(args):
     config = _load_config(args)
     if config.asset_class == "stock":
@@ -196,6 +255,15 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--top-n", type=int, default=None, help="How many top pairs to backtest (default: config.max_concurrent_pairs).")
     b.add_argument("--out-dir", default=None, help="Directory to write equity curve + trade log CSVs.")
     b.set_defaults(func=cmd_backtest)
+
+    wf = sub.add_parser("walkforward", help="Compare static vs adaptive pair selection across several OOS windows.",
+                         parents=[common])
+    wf.add_argument("--windows", type=int, default=4, help="Number of sequential out-of-sample windows to walk through.")
+    wf.add_argument("--top-n", type=int, default=None, help="Pairs selected per window (default: config.max_concurrent_pairs).")
+    wf.add_argument("--performance-weight", type=float, default=0.35,
+                     help="0=pure p-value ranking (identical to `backtest`'s default), 1=pure trailing "
+                          "realized performance. Default 0.35.")
+    wf.set_defaults(func=cmd_walkforward)
 
     pp = sub.add_parser("paper", help="Run the (simulated) paper-trading loop for one pair.", parents=[common])
     pp.add_argument("--pair", nargs=2, metavar=("COIN_A", "COIN_B"), required=False, default=None)

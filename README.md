@@ -66,6 +66,9 @@ python -m statarb.cli backtest --config config.yaml --out-dir results/
 # Walk-forward backtest one specific pair, ignoring the scan ranking
 python -m statarb.cli backtest --config config.yaml --pair BTC ETH --out-dir results/
 
+# Compare static vs adaptive pair selection across several OOS windows (see below)
+python -m statarb.cli walkforward --config config_stocks.yaml --windows 4
+
 # Paper-trade one pair (simulated only; Ctrl+C to stop, or use --iterations for a bounded run)
 python -m statarb.cli paper --config config.yaml --pair BTC ETH --iterations 5
 ```
@@ -107,6 +110,9 @@ python -m statarb.cli paper --config config_paper.yaml --pair BTC ETH --iteratio
 | `fee_bps`, `slippage_bps` | per-leg, per-trade cost assumptions |
 | `starting_capital`, `risk_per_pair_pct`, `max_concurrent_pairs` | sizing |
 | `poll_interval_sec`, `paper_log_dir` | paper-trading loop behavior |
+| `selection_lookback_days` | OOS pair-selection window (see below); `0` = old single-window behavior |
+| `adaptive_performance_weight` | default `--performance-weight` for `walkforward` |
+| `log_flow_signal`, `flow_filter_enabled`, `flow_large_trade_pctile`, `flow_veto_imbalance` | trade-flow monitoring (crypto `paper` only, see below) |
 
 ## Stocks (`config_stocks.yaml`)
 
@@ -176,6 +182,81 @@ A few things worth knowing before reading much into results here:
   equities are typically cheaper to trade than crypto, but the real numbers
   depend entirely on your actual broker. Update them before the backtest
   numbers mean anything.
+
+## Adaptive pair scoring (`walkforward` command)
+
+`backtest`'s OOS split (above) fixes lookahead in pair selection, but not a
+separate risk: with dozens of candidate pairs tested at `p < 0.05`, some
+will look cointegrated by chance alone (multiple-testing false discovery),
+with no real economic relationship behind them -- and a *single* held-out
+window can't tell a real relationship from a lucky one. A pair's
+performance across *several sequential* OOS windows starts to be able to,
+though: a real relationship should keep paying off across different market
+conditions; a fluke usually won't repeat.
+
+`walkforward` runs the same pair-selection-then-backtest pipeline as
+`backtest`, but repeated across several sequential out-of-sample windows,
+and compares two ways of ranking candidate pairs each window:
+
+- **static** -- pure p-value ranking, identical to `backtest`'s existing
+  behavior (this is the baseline, not a new/different thing).
+- **adaptive** -- p-value blended with each pair's own trailing realized
+  Sharpe from windows *before* the one being selected for (never anything
+  from the window it's about to be tested on -- see `adaptive.py`'s
+  `PairPerformanceHistory`). A pair with no track record yet falls back to
+  a neutral rank, so new pairs aren't punished just for being untested.
+
+```bash
+python -m statarb.cli walkforward --config config_stocks.yaml --windows 4
+```
+
+This is a **comparison tool, not a replacement** for `backtest` yet --
+`backtest`/`paper` still use plain p-value ranking. Whether `adaptive`
+consistently beats `static` (and isn't just noise from a handful of
+windows) is exactly what `walkforward`'s side-by-side output is for
+checking before trusting it with anything. `--performance-weight` (default
+`0.35`) controls how much trailing performance influences the ranking;
+`0` reproduces `backtest`'s existing behavior exactly.
+
+Deliberately NOT a black-box ML model predicting prices -- it's an
+interpretable re-ranking of `scan_pairs()`'s own output using only each
+pair's own past realized performance, which keeps it auditable and hard to
+silently overfit.
+
+## Trade-flow monitoring ("big trader activity", crypto only)
+
+A free, real-time signal built from each exchange's own public recent-
+trades tape (`ccxt`'s `fetch_trades`) -- flagging unusually large trades
+and the buy/sell notional imbalance, as a proxy for aggressive positioning
+by big players. Logged automatically during `paper` when
+`log_flow_signal: true` (on by default in `config_paper.yaml`) to
+`paper_logs/flow_<SYMBOL>.csv`.
+
+**This is not on-chain whale-wallet tracking**, which is what "big trader
+activity" more commonly means. That was the original plan, but checking the
+actual current market for it first: Whale Alert (the standard option)
+no longer appears to offer a free tier at all (plans start at $29.95/mo,
+real-time REST access is $699/mo), and Etherscan has been cutting back free
+*programmatic* API access on several chains recently -- and even at its
+most generous, only covers Ethereum-family chains, never Bitcoin. An
+exchange's own trade tape is a legitimate, well-established proxy for the
+same underlying thing, and it's free, symmetric across BTC and ETH, and
+reuses the exact same exchange connection `paper` already has open (no new
+account, no new dependency, no new uptime risk).
+
+**Honest limitation:** `fetch_trades` only returns *recent* trades (recent
+minutes-to-hours of tape) -- there's no historical trade-by-trade tape to
+backtest this signal against, because nothing captured it before now. It
+can only be evaluated by logging it going forward and looking back once
+real history has accumulated, same as everything else that's had to earn
+its place in this project.
+
+`flow_filter_enabled` (default `false`) would let a strongly-opposing flow
+imbalance skip a trade entry (`flow.flow_entry_veto`) -- it's a real,
+stateable hypothesis (entering a mean-reversion trade straight into heavy
+opposing flow is riskier than entering when flow is neutral), but it stays
+off until there's enough logged `flow_*.csv` history to actually check that
+hypothesis instead of just assuming it.
 
 ## Running via GitHub Actions (instead of your own laptop)
 
