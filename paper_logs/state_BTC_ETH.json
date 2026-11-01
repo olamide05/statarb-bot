@@ -3,13 +3,13 @@
   "equity": 9828.851593728767,
   "position": "FLAT",
   "open_trade": null,
-  "bars_since_fit": 33,
-  "last_ts_a": 1793489400000,
+  "bars_since_fit": 69,
+  "last_ts_a": 1793500200000,
   "model": {
     "hedge_ratio": 22.451127067168997,
     "alpha": 26958.228984658606,
     "spread_mean": -3.860299734191762e-11,
     "spread_std": 60.53445325652334
   },
-  "saved_at": "2026-10-31T23:39:22.276713+00:00"
+  "saved_at": "2026-11-01T02:38:40.968856+00:00"
 }
