@@ -1,15 +1,22 @@
 {
   "version": 1,
-  "equity": 9771.92225831285,
-  "position": "FLAT",
-  "open_trade": null,
-  "bars_since_fit": 7,
-  "last_ts_a": 1794648000000,
-  "model": {
-    "hedge_ratio": 36.22309900579131,
-    "alpha": -1561.6540144024038,
-    "spread_mean": -1.0205541103560891e-09,
-    "spread_std": 183.26589152404364
+  "equity": 9770.456469974104,
+  "position": "SHORT_SPREAD",
+  "open_trade": {
+    "direction": "short_spread",
+    "entry_price_a": 67148.6,
+    "entry_price_b": 1904.48,
+    "shares_a": -0.00717812387752157,
+    "shares_b": 0.2600138918912985,
+    "entry_cost": 1.4657883387469275
   },
-  "saved_at": "2026-11-14T09:29:19.792224+00:00"
+  "bars_since_fit": 14,
+  "last_ts_a": 1794671700000,
+  "model": {
+    "hedge_ratio": 33.8013478002776,
+    "alpha": 3047.7011094295594,
+    "spread_mean": 6.030202510171674e-10,
+    "spread_std": 224.69011956616976
+  },
+  "saved_at": "2026-11-14T16:01:47.890957+00:00"
 }
